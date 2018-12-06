@@ -29,7 +29,7 @@ class deep:
          
      #payoff
      def g(self,S):
-         return np.maximum(S-100,0)
+         return np.maximum(S-90,0) - np.maximum(S-110,0)
          
      def feed_forward(self):
         self.B = npr.normal(0,np.sqrt(self.T/self.N),self.N)
@@ -77,15 +77,13 @@ class deep:
          #f(x+e)
          S = self.S[k]
          vol = (self.ssup - self.sinf)*self.networks[k].evaluate(S)+self.sinf + e
-         #S = S + S*vol*self.B[k]
          S = S*np.exp(vol*self.B[k]-vol**2/2*self.T/self.N)
          for i in range(k+1,self.N):
                 vol = (self.ssup - self.sinf)*self.networks[i].evaluate(S)+self.sinf
-                #S = S + S*vol*self.B[i]
                 S = S*np.exp(vol*self.B[i]-vol**2/2*self.T/self.N)
          Gplus = self.g(S)
          
-         return (Gplus - self.payoff)/e
+         return (Gplus - self.payoff)/(2*e)
     
      '''
      Trains the deep neural network
@@ -93,6 +91,55 @@ class deep:
      alfa : learning rate
      '''
     
+     def train_ADAM(self,Ngd):
+         #Keeps the sum of the derivatives of the output of each network 
+         #with respect to its parameters, W and b for each MC iteration
+         dadW = []
+         dadb = []
+         
+         for i in range(self.N):
+             dadW.append(cp.deepcopy(self.networks[i].dFdW)) 
+             dadb.append(cp.deepcopy(self.networks[i].dFdb))
+         
+         beta_1 = 0.9
+         beta_2 = 0.999
+         epsilon = 1e-8
+         alpha = 1e-3       
+             
+         V_w = cp.deepcopy(dadW)
+         M_w = cp.deepcopy(dadW)
+         V_b = cp.deepcopy(dadb)
+         M_b = cp.deepcopy(dadb)
+
+         for i in range(Ngd):
+            #Simulates the current process 
+            self.feed_forward()
+            for j in range(self.N):
+                dg = self.dg_dvol(j)
+                for k in range(1,self.topology.size):
+                    #ADAM
+                    dadW[j][k] = dg*(self.ssup - self.sinf)*self.networks[j].dFdW[k]
+                    dadb[j][k] = dg*(self.ssup - self.sinf)*self.networks[j].dFdb[k]
+                    
+                    M_w[j][k] = beta_1 * M_w[j][k] + (1-beta_1) * (dadW[j][k])
+                    M_b[j][k] = beta_1 * M_b[j][k] + (1-beta_1) * (dadb[j][k])
+                    
+                    V_w[j][k] = beta_2 * V_w[j][k] + (1-beta_2) * (dadW[j][k])**2
+                    V_b[j][k] = beta_2 * V_b[j][k] + (1-beta_2) * (dadb[j][k])**2
+                    
+                    m_chapeu_w = M_w[j][k]/(1 - beta_1**(i+1))
+                    m_chapeu_b = M_b[j][k]/(1 - beta_1**(i+1))
+                    
+                    v_chapeu_w = V_w[j][k]/(1 - beta_2**(i+1))
+                    v_chapeu_b = V_b[j][k]/(1 - beta_2**(i+1))
+                    
+                    #Updates the network's parameters
+                    e_w =  alpha*m_chapeu_w/(np.sqrt(v_chapeu_w)+ epsilon)
+                    e_b =  alpha*m_chapeu_b/(np.sqrt(v_chapeu_b) + epsilon)
+
+                    self.networks[j].W[k] += e_w
+                    self.networks[j].b[k] += e_b     
+        
      def train(self,Ngd,alfa):
          #Keeps the sum of the derivatives of the output of each network 
          #with respect to its parameters, W and b for each MC iteration
@@ -103,7 +150,6 @@ class deep:
              dadb.append(cp.deepcopy(self.networks[i].dFdb))
 
          for i in range(Ngd):
-            print(i)
             #Simulates the current process 
             self.feed_forward()
             for j in range(self.N):
@@ -116,21 +162,7 @@ class deep:
                 for k in range(1,self.topology.size):
                     self.networks[j].W[k] += alfa * dadW[j][k]  
                     self.networks[j].b[k] += alfa * dadb[j][k]     
-                    
-    
+                                            
      
 
-if __name__ == "__main__":           
-    import time      
-    top = np.array([1,4,4,4,4,1])
-    N = 12
-    first_deep = deep(top,N)  
-    start_time = time.time()
-    first_deep.train(10000,0.1)
-    print ("Tempo de treino " + repr(time.time() - start_time ))
-    
-    start_time = time.time()
-    print(first_deep.evaluate(int(2**16)))
-    
-    print("tempo monte carlo:" + str((time.time()-start_time)))
         
