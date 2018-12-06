@@ -12,7 +12,7 @@ import math as m
 
 '''
 A general topology neural network
-1)Here we consider that the input and the output will always have dimension 1
+1)Here we consider that all hudden layers have dimension grater than one
 2)That's the version we are going to use for the stochastic control. We apply 
 a sigmoid function to assure that its output will be at the interval [0,1].
 3)We use tanh for all hidden units.     
@@ -21,7 +21,6 @@ a sigmoid function to assure that its output will be at the interval [0,1].
 class NN:
     def __init__(self,topology):
         self.topology = topology
-        
         self.W = [np.zeros(1)]
         self.dFdW = [np.zeros(1)]
         self.b = [np.zeros(1)]
@@ -65,14 +64,14 @@ class NN:
         for i in range(1,self.topology.size-2):
             self.A[i+1] = np.hstack(np.tanh(self.W[i+1]@self.A[i]+ self.b[i+1]))
         n = self.topology.size-1
-        self.A[n] = np.hstack(self.sig(self.W[n]@self.A[n-1] + self.b[n]))
+        self.A[n] = np.hstack(self.W[n]@self.A[n-1] + self.b[n])
         
         return self.A[-1]
     '''
     Performs the backpropagation of the neural network.
     '''   
     def back_propagation(self):
-        self.d[-1] = self.sig_derivate(self.A[-1])
+        self.d[-1] = self.A[-1]/self.A[-1]
         
         #The case we have more then one end
         self.dFdb[-1] = self.d[-1]
@@ -115,4 +114,54 @@ class NN:
             for j in range(1,self.topology.size):
                 self.W[j] = self.W[j] - e*self.dFdW[j] * (y - T[i])
                 self.b[j] = self.b[j] - e*self.dFdb[j] * (y - T[i])
+
+np.random.seed(0)
+N = 100000
+X = npr.uniform(-1,1,N) 
+T = np.tan(X)
+
+top = np.array([1,5,5,1])
+nn = NN(top)
+
+nn.training_test_sen(N,X,T,0.1) 
+
+M = 20
+Y = np.linspace(-1,1,M)
+test = np.zeros(M)
+for i in range(M):
+    test[i] = nn.evaluate(Y[i])
+
+plt.scatter(Y,test,label = 'NN')
+plt.plot(Y,np.tan(Y),label = 'Tan')
+plt.legend()
+                
+'''                
+np.random.seed(0)
+N = 1000
+X = np.zeros((N,2))
+X[:,0] = npr.uniform(0,m.pi*2,N) 
+X[:,1] = npr.uniform(0,m.pi*2,N) 
+
+Z = np.sum(X,1)/2
+
+T = np.zeros((N,2))
+T[:,0] = np.sin(Z)
+T[:,1] = np.sin(Z)
+
+top = np.array([2,5,5,2])
+nn = NN(top)
+
+nn.training_test_sen(N,X,T,0.1) 
+'''
+'''
+M = 20
+Y = np.linspace(-1,1,M)
+test = np.zeros(M)
+for i in range(M):
+    test[i] = nn.feed_forward(Y[i])
+
+plt.scatter(Y,test,label = 'NN')
+plt.plot(Y,np.tan(Y),label = 'Tan')
+plt.legend()
+'''
 
