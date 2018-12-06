@@ -10,49 +10,81 @@ import numpy.random as npr
 import NN as NN
 
 
-class deep:
+class deep_bidmensional:
      def __init__(self,topology,N):
          #Creates network
          self.topology = topology
          self.N = N
-         self.networks = []
+         self.networks1 = []
+         self.networks2 = []
          for i in range(N):
-             self.networks.append(NN.NN(topology)) 
+             self.networks1.append(NN.NN(topology)) 
+             self.networks2.append(NN.NN(topology)) 
+             
          #Parameters of the UVM model
-         self.S = np.zeros(self.N+1)
-         self.S[0] = 100
+         self.S1 = np.zeros(self.N+1)
+         self.S2 = np.zeros(self.N+1)
+         self.S1[0] = 100
+         self.S2[0] = 100
          self.sinf = 0.1
          self.ssup = 0.2
          self.T = 1
-         self.B = np.zeros(self.N)#brownian mouvement
+         
+         #Brownian - The idea is to use 
+         #B2 = pho*B1 - sqrt(1-pho**2)*Z
+         self.pho = -0.5
+         self.B1 = np.zeros(self.N)#brownian mouvement of asset 1
+         self.Z = np.zeros(self.N) #Auxiliar brownian independent of 1
+         self.B2 = np.zeros(self.N)#Brownian mouvement of asset 2
+         
          self.payoff = 0
          
-     #payoff
-     def g(self,S):
-         return np.maximum(S-90,0) - np.maximum(S-110,0)
+     def g(self,S1, S2):
+         '''
+         The payoff of this option
+         '''
+         return np.maximum(S1-S2,0)
          
      def feed_forward(self):
-        self.B = npr.normal(0,np.sqrt(self.T/self.N),self.N)
+        #Brownian Calculus
+        self.B1 = npr.normal(0,np.sqrt(self.T/self.N),self.N)
+        self.Z = npr.normal(0,np.sqrt(self.T/self.N),self.N)
+        self.B2 = self.pho*self.B1 + np.sqrt(1 - self.pho**2)*self.Z
+        
         for i in range(self.N):
-            vol = (self.ssup - self.sinf)*self.networks[i].feed_forward(self.S[i])+self.sinf
-            #self.S[i+1] = self.S[i] + self.S[i]*vol*self.B[i]
-            self.S[i+1] = self.S[i]*np.exp(vol*self.B[i]-vol**2/2*self.T/self.N)
-            self.networks[i].back_propagation()
-        self.payoff = self.g(self.S[-1])
-     '''
-     Evaluates the stochastic control for the current neural network
-     '''
+            #Volatility calculus
+            vol1 = (self.ssup - self.sinf)*self.networks1[i].feed_forward(self.S1[i])+self.sinf
+            vol2 = (self.ssup - self.sinf)*self.networks2[i].feed_forward(self.S2[i])+self.sinf
+            #Feed Forward
+            self.S1[i+1] = self.S1[i]*np.exp(vol1*self.B1[i]-vol1**2/2*self.T/self.N)
+            self.S2[i+1] = self.S2[i]*np.exp(vol2*self.B2[i]-vol2**2/2*self.T/self.N)
+            #BackProp
+            self.networks1[i].back_propagation()
+            self.networks2[i].back_propagation()
+        #Payoff
+        self.payoff = self.g(self.S1[-1], self.S2[-1])
+
      def evaluate(self,Nmc):
-         S = self.S[0]
+         '''
+         Evaluates the stochastic control for the current neural network
+         '''
+         S1 = self.S1[0]
+         S2 = self.S2[0]
          sum_payoff = 0
          for i in range(Nmc):
-             S = self.S[0]
-             B = npr.normal(0,np.sqrt(self.T/self.N),self.N)
+             S1 = self.S1[0]
+             S2 = self.S2[0]
+             
+             B1 = npr.normal(0,np.sqrt(self.T/self.N),self.N)
+             Z = npr.normal(0,np.sqrt(self.T/self.N),self.N)
+             B2 = self.pho*B1 + np.sqrt(1 - self.pho**2)*Z
+             
              for j in range(self.N):
-                 vol = (self.ssup - self.sinf)*self.networks[j].feed_forward(S)+self.sinf
-                 #S = S + S*vol*B[j]
-                 S = S*np.exp(vol*B[j]-vol**2/2*self.T/self.N)
-             sum_payoff += self.g(S)
+                 vol1 = (self.ssup - self.sinf)*self.networks1[j].feed_forward(S1)+self.sinf
+                 vol2 = (self.ssup - self.sinf)*self.networks2[j].feed_forward(S2)+self.sinf
+                 S1 = S1*np.exp(vol1*B1[j]-vol1**2/2*self.T/self.N)
+                 S2 = S2*np.exp(vol2*B2[j]-vol2**2/2*self.T/self.N)
+             sum_payoff += self.g(S1, S2)
          payoff = sum_payoff/Nmc
          return payoff   
 
@@ -68,23 +100,46 @@ class deep:
              sum_payoff += self.g(S)
          payoff = sum_payoff/Nmc
          return payoff
-     """
-     Performs the derivative of the payoff with respect to the control k 
-     where k belongs to {0,1,...,self.N-1}
-     """
+
      def dg_dvol(self,k):
+         """
+         Performs the derivative of the payoff with respect to the control k 
+         where k belongs to {0,1,...,self.N-1}
+         """
          e = 0.0001
          #f(x+e)
-         S = self.S[k]
-         vol = (self.ssup - self.sinf)*self.networks[k].evaluate(S)+self.sinf + e
-         S = S*np.exp(vol*self.B[k]-vol**2/2*self.T/self.N)
-         for i in range(k+1,self.N):
-                vol = (self.ssup - self.sinf)*self.networks[i].evaluate(S)+self.sinf
-                S = S*np.exp(vol*self.B[i]-vol**2/2*self.T/self.N)
-         Gplus = self.g(S)
+         S1 = self.S1[k]
+         S2 = self.S2[k]
+         S1_before = self.S1[k]
+         S2_before = self.S2[k]
          
-         return (Gplus - self.payoff)/(2*e)
+         vol1 = (self.ssup - self.sinf)*self.networks1[k].evaluate(S1)+self.sinf + e
+         vol1_before = (self.ssup - self.sinf)*self.networks1[k].evaluate(S1)+self.sinf
+         vol2 = (self.ssup - self.sinf)*self.networks2[k].evaluate(S2)+self.sinf + e
+         vol2_before = (self.ssup - self.sinf)*self.networks2[k].evaluate(S2)+self.sinf
+         
+         S1 = S1*np.exp(vol1*self.B1[k]-vol1**2/2*self.T/self.N)
+         S1_before = S1_before*np.exp(vol1_before*self.B1[k]-vol1_before**2/2*self.T/self.N)
+         S2 = S2*np.exp(vol2*self.B2[k]-vol2**2/2*self.T/self.N)
+         S2_before = S2_before*np.exp(vol2_before*self.B2[k]-vol2_before**2/2*self.T/self.N)
+         
+         for i in range(k+1,self.N):
+                vol1 = (self.ssup - self.sinf)*self.networks1[i].evaluate(S1)+self.sinf
+                S1 = S1*np.exp(vol1*self.B1[i]-vol1**2/2*self.T/self.N)
+                vol2 = (self.ssup - self.sinf)*self.networks2[i].evaluate(S2)+self.sinf
+                S2 = S2*np.exp(vol2*self.B2[i]-vol2**2/2*self.T/self.N)
+                
+                vol1_before = (self.ssup - self.sinf)*self.networks1[i].evaluate(S1_before)+self.sinf
+                S1_before = S1_before*np.exp(vol1_before*self.B1[i]-vol1_before**2/2*self.T/self.N)
+                vol2_before = (self.ssup - self.sinf)*self.networks2[i].evaluate(S2_before)+self.sinf
+                S2_before = S2_before*np.exp(vol2_before*self.B2[i]-vol2_before**2/2*self.T/self.N)
+                
+         Gplus1 = self.g(S1, S2_before)
+         Gplus2 = self.g(S1_before, S2)
+         
+         return (Gplus1 - self.payoff)/(2*e), (Gplus2 - self.payoff)/(2*e)
     
+
      '''
      Trains the deep neural network
      Ngd : Number of iterations of the gradient descent algorithm
@@ -146,22 +201,25 @@ class deep:
          dadW = []
          dadb = []
          for i in range(self.N):
-             dadW.append(cp.deepcopy(self.networks[i].dFdW)) 
-             dadb.append(cp.deepcopy(self.networks[i].dFdb))
+             dadW.append(cp.deepcopy(self.networks1[i].dFdW)) 
+             dadb.append(cp.deepcopy(self.networks1[i].dFdb))
 
          for i in range(Ngd):
             #Simulates the current process 
+            print(i)
             self.feed_forward()
             for j in range(self.N):
-                dg = self.dg_dvol(j)
+                dg1, dg2 = self.dg_dvol(j)
                 for k in range(1,self.topology.size):
-                    dadW[j][k] = dg*(self.ssup - self.sinf)*self.networks[j].dFdW[k]
-                    dadb[j][k] = dg*(self.ssup - self.sinf)*self.networks[j].dFdb[k]
+                    dadW[j][k] = dg1*(self.ssup - self.sinf)*self.networks1[j].dFdW[k] + dg2*(self.ssup - self.sinf)*self.networks2[j].dFdW[k]
+                    dadb[j][k] = dg1*(self.ssup - self.sinf)*self.networks1[j].dFdb[k] + dg2*(self.ssup - self.sinf)*self.networks2[j].dFdb[k]
             #Updates the network's parameters
             for j in range(self.N):
                 for k in range(1,self.topology.size):
-                    self.networks[j].W[k] += alfa * dadW[j][k]  
-                    self.networks[j].b[k] += alfa * dadb[j][k]     
+                    self.networks1[j].W[k] += alfa * dadW[j][k]  
+                    self.networks1[j].b[k] += alfa * dadb[j][k]    
+                    self.networks2[j].W[k] += alfa * dadW[j][k]  
+                    self.networks2[j].b[k] += alfa * dadb[j][k]      
                                             
      
 

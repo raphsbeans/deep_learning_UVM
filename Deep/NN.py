@@ -65,15 +65,15 @@ class NN:
         for i in range(1,self.topology.size-2):
             self.A[i+1] = np.hstack(np.tanh(self.W[i+1]@self.A[i]+ self.b[i+1]))
         n = self.topology.size-1
-        self.A[n] = np.hstack(self.W[n]@self.A[n-1] + self.b[n])
+        self.A[n] = np.hstack(self.sig(self.W[n]@self.A[n-1] + self.b[n]))
         
         return self.A[-1]
     '''
     Performs the backpropagation of the neural network.
     '''   
     def back_propagation(self):
-        self.d[-1] = self.A[-1]/self.A[-1]#self.sig_derivate(self.A[-1])
-        
+        #self.d[-1] = self.A[-1]/self.A[-1]
+        self.d[-1] = self.sig_derivate(self.A[-1])
         #The case we have more then one end
         self.dFdb[-1] = self.d[-1]
         if (self.topology[-1] == 1):
@@ -116,27 +116,27 @@ class NN:
                 self.W[j] = self.W[j] - e*self.dFdW[j] * (y - T[i])
                 self.b[j] = self.b[j] - e*self.dFdb[j] * (y - T[i])
 
-
-import time
-np.random.seed(0)
-
-N = 50000
-X = npr.uniform(0,1.3,N) 
-T = np.tan(X)
-
-top = np.array([1,5,5,1])
-
-nn2 = NN(top)
-start_time = time.time()
-nn2.training_test_sen(N,X,T,0.1)
-print ("training SGD time " + repr (time.time() - start_time))
-
-M = 20
-Y = np.linspace(0,1.3,M)
-test = np.zeros(M)
-for i in range(M):
-    test[i] = nn2.feed_forward(Y[i])
-
-plt.scatter(Y,test)
-plt.plot(Y,np.tan(Y))
-plt.title("using SGD")
+if __name__ == "__main__":
+    import time
+    np.random.seed(0)
+    
+    N = 50000
+    X = npr.uniform(0,1.3,N) 
+    T = np.tan(X)
+    
+    top = np.array([1,5,5,1])
+    
+    nn2 = NN(top)
+    start_time = time.time()
+    nn2.training_test_sen(N,X,T,0.1)
+    print ("training SGD time " + repr (time.time() - start_time))
+    
+    M = 20
+    Y = np.linspace(0,1.3,M)
+    test = np.zeros(M)
+    for i in range(M):
+        test[i] = nn2.feed_forward(Y[i])
+    
+    plt.scatter(Y,test)
+    plt.plot(Y,np.tan(Y))
+    plt.title("using SGD")
