@@ -48,24 +48,42 @@ class NN:
     def sig(self,x):
         return 1/(1+np.exp(-x))
     
+    
+    def sig_derivate (self,x):
+        #In this part we will consider that x is already the sig
+        return x * (1 - x)
+    
     def feed_forward(self,x):
         self.A[0] = np.array(x)
-        self.A[1] = np.hstack(np.tanh(self.W[1]*self.A[0] + np.hstack(self.b[1])))
+        #Case the start has more then one dimention
+        if (self.topology[0] == 1):    
+            self.A[1] = np.hstack(np.tanh(self.W[1]*self.A[0] + np.hstack(self.b[1])))
+            
+        else:
+            self.A[1] = np.hstack(np.tanh(self.W[1]@self.A[0] + self.b[1]))
+            
         for i in range(1,self.topology.size-2):
             self.A[i+1] = np.hstack(np.tanh(self.W[i+1]@self.A[i]+ self.b[i+1]))
         n = self.topology.size-1
-        self.A[n] = np.hstack(self.W[n]@self.A[n-1] + self.b[n])
-        self.j = self.sig(self.A[-1])
-        return self.j
+        self.A[n] = np.hstack(self.sig(self.W[n]@self.A[n-1] + self.b[n]))
+        
+        return self.A[-1]
     '''
     Performs the backpropagation of the neural network.
     '''   
     def back_propagation(self):
-        self.d[-1] = self.sig(self.A[-1])*(1-self.sig(self.A[-1]))
-        self.dFdW[-1] = self.d[-1]*self.A[-2]
-        self.dFdb[-1] = self.d[-1]
-        self.d[-2] = self.d[-1]*self.W[-1]*(1 - self.A[-2]**2)
+        self.d[-1] = self.sig_derivate(self.A[-1])
         
+        #The case we have more then one end
+        self.dFdb[-1] = self.d[-1]
+        if (self.topology[-1] == 1):
+            self.dFdW[-1] = self.d[-1]*self.A[-2]
+            self.d[-2] = self.d[-1]*self.W[-1]*(1 - self.A[-2]**2)
+            
+        else :
+            self.dFdW[-1] = np.outer(self.d[-1],self.A[-2])
+            self.d[-2] = (self.W[-1].T@self.d[-1])*(1 - self.A[-2]**2)
+            
         for i in range(self.topology.size-2):
             n = self.topology.size-2-i #The indice of the W that we are going to work with
             self.dFdW[n] = np.outer(self.d[n],self.A[n-1])
@@ -76,18 +94,25 @@ class NN:
             self.dFdW[1] = np.hstack(self.dFdW[1])
             
         return self.d[-1]
-    '''
-    Evaluates the derivative of the output with respect to the input.
-    It must be called after the backpropagation function.
-    '''       
-    def der_output(self):
-        return self.d[0]/(1-self.A[0]**2)
         
     def evaluate(self,x):
-        A = np.hstack(np.tanh(self.W[1]*x+ np.hstack(self.b[1])))
+        #Case dimention of x is more then 1
+        if (self.topology[0] == 1):
+            A = np.hstack(np.tanh(self.W[1]*x + np.hstack(self.b[1])))
+        else:
+            A = np.hstack(np.tanh(self.W[1]@x + self.b[1]))
+            
         for i in range(1,self.topology.size-2):
-            A = np.hstack(np.tanh(self.W[i+1]@A+ self.b[i+1]))
+            A = np.hstack(np.tanh(self.W[i+1]@A + self.b[i+1]))
         n = self.topology.size-1
         A = np.hstack(self.W[n]@A + self.b[n])
         return self.sig(A)
+    
+    def training_test_sen(self,N,X,T,e):   
+        for i in range(N):
+            y = self.feed_forward(X[i])
+            self.back_propagation()
+            for j in range(1,self.topology.size):
+                self.W[j] = self.W[j] - e*self.dFdW[j] * (y - T[i])
+                self.b[j] = self.b[j] - e*self.dFdb[j] * (y - T[i])
 
